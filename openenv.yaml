@@ -1,0 +1,48 @@
+name: ai-project-manager-environment
+version: 1.1.0
+description: Multi-step project management environment for choosing and scheduling tasks under constraints.
+entrypoint:
+  module: server
+protocol: http
+port: 7860
+endpoints:
+  reset:
+    method: POST
+    path: /reset
+    query:
+      scenario:
+        type: string
+        enum: [easy, medium, hard]
+        default: easy
+  step:
+    method: POST
+    path: /step
+    body:
+      type: object
+      required: [task_id]
+      properties:
+        task_id:
+          type: string
+  state:
+    method: GET
+    path: /state
+observation:
+  fields:
+    - step
+    - time_elapsed
+    - remaining_steps
+    - tasks
+    - completed_task_ids
+    - missed_task_ids
+    - scenario
+    - hint
+step_response:
+  fields:
+    - observation
+    - reward
+    - done
+    - info
+compatibility:
+  multi_step: true
+  deterministic: true
+  reward_range: [0.0, 1.0]
