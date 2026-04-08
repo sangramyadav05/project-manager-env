@@ -9,11 +9,13 @@ endpoints:
   reset:
     method: POST
     path: /reset
-    query:
-      scenario:
-        type: string
-        enum: [easy, medium, hard]
-        default: easy
+    body:
+      type: object
+      required: []
+      properties:
+        scenario:
+          type: string
+          enum: [easy, medium, hard]
   step:
     method: POST
     path: /step

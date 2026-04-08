@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import Body, FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 
 from env import ProjectManagerEnv, SCENARIOS
@@ -324,7 +324,11 @@ INDEX_HTML = """<!DOCTYPE html>
     }
 
     async function resetEpisode() {
-      const response = await fetch(`/reset?scenario=${encodeURIComponent(scenarioSelect.value)}`, { method: 'POST' });
+      const response = await fetch('/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: scenarioSelect.value })
+      });
       const payload = await response.json();
       appendLog('Reset', payload.info.strategy || 'Environment reset.');
       await refreshState();
@@ -385,16 +389,29 @@ async def meta() -> dict:
 
 
 @app.post('/reset')
-async def reset(request: dict = Body(default_factory=dict)) -> dict:
-    scenario = request.get('scenario')
+async def reset(request: Request) -> dict:
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            payload = {}
+    except Exception:
+        payload = {}
+
+    scenario = payload.get('scenario')
     if scenario not in SCENARIOS:
         scenario = None
     return await env.reset(scenario)
 
 
 @app.post('/step')
-async def step(action: dict = Body(default_factory=dict)) -> dict:
-    return await env.step(action)
+async def step(request: Request) -> dict:
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            payload = {}
+    except Exception:
+        payload = {}
+    return await env.step(payload)
 
 
 @app.get('/state', response_model=EnvState)
