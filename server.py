@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI
 from fastapi.responses import HTMLResponse
 
 from env import ProjectManagerEnv, SCENARIOS
 from grader import grade_all
-from models import EnvState, ResetResponse, StepRequest, StepResponse
+from models import EnvState
 
 app = FastAPI(title='AI Project Manager Environment', version='1.1.0')
 env = ProjectManagerEnv(scenario='easy')
@@ -384,26 +384,22 @@ async def meta() -> dict:
     }
 
 
-@app.post('/reset', response_model=ResetResponse)
-async def reset(scenario: str = Query(default='easy')) -> ResetResponse:
+@app.post('/reset')
+async def reset(request: dict = Body(default_factory=dict)) -> dict:
+    scenario = request.get('scenario')
     if scenario not in SCENARIOS:
-        raise HTTPException(status_code=400, detail=f'Unknown scenario: {scenario}')
-    observation, info = await env.reset(scenario)
-    return ResetResponse(observation=observation, info=info)
+        scenario = None
+    return await env.reset(scenario)
 
 
-@app.post('/step', response_model=StepResponse)
-async def step(request: StepRequest) -> StepResponse:
-    try:
-        observation, reward, done, info = await env.step(request.task_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return StepResponse(observation=observation, reward=reward, done=done, info=info)
+@app.post('/step')
+async def step(action: dict = Body(default_factory=dict)) -> dict:
+    return await env.step(action)
 
 
 @app.get('/state', response_model=EnvState)
 async def state() -> EnvState:
-    return await env.state()
+    return (await env.state()).model_dump()
 
 
 @app.get('/grade')
