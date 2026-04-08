@@ -403,6 +403,11 @@ async def reset(request: Request) -> dict:
     return await env.reset(scenario)
 
 
+@app.post('/reset/')
+async def reset_with_slash(request: Request) -> dict:
+    return await reset(request)
+
+
 @app.post('/step')
 async def step(request: Request) -> dict:
     try:
@@ -414,8 +419,18 @@ async def step(request: Request) -> dict:
     return await env.step(payload)
 
 
+@app.post('/step/')
+async def step_with_slash(request: Request) -> dict:
+    return await step(request)
+
+
 @app.get('/state', response_model=EnvState)
 async def state() -> EnvState:
+    return (await env.state()).model_dump()
+
+
+@app.get('/state/')
+async def state_with_slash() -> dict:
     return (await env.state()).model_dump()
 
 
