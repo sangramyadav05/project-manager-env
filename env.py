@@ -51,133 +51,106 @@ class ProjectManagerEnv:
         self.history: List[Dict[str, Any]] = []
         self._reset_internal(scenario)
 
-    async def reset(self, scenario: str | None = None) -> Dict[str, Any]:
-        try:
-            observation, info = self._reset_internal(scenario)
-            return {
-                'observation': observation.model_dump(),
-                'reward': 0.0,
-                'done': False,
-                'info': info,
-            }
-        except Exception as exc:
-            fallback_observation = self._build_observation().model_dump()
-            return {
-                'observation': fallback_observation,
-                'reward': 0.0,
-                'done': False,
-                'info': {'error': str(exc)},
-            }
+    async def reset(self, scenario: str | None = None) -> Observation:
+        observation, _ = self._reset_internal(scenario)
+        return observation
 
-    async def step(self, action: Dict[str, Any] | str) -> Dict[str, Any]:
-        try:
-            if isinstance(action, dict):
-                task_id = str(action.get('task_id', '')).strip()
-            else:
-                task_id = str(action).strip()
+    async def step(self, action: Dict[str, Any] | str) -> Tuple[Observation, float, bool, Dict[str, Any]]:
+        if isinstance(action, dict):
+            task_id = str(action.get('task_id', '')).strip()
+        else:
+            task_id = str(action).strip()
 
-            if self.done:
-                raise ValueError('Episode is already complete. Call reset() to start a new episode.')
-            if not task_id:
-                raise ValueError('Missing task_id in action.')
+        if self.done:
+            raise ValueError('Episode is already complete. Call reset() to start a new episode.')
+        if not task_id:
+            raise ValueError('Missing task_id in action.')
 
-            available = [task for task in self.tasks if not task.completed and not task.missed]
-            selected = next((task for task in available if task.id == task_id), None)
-            if selected is None:
-                raise ValueError(f'Invalid task_id: {task_id}')
+        available = [task for task in self.tasks if not task.completed and not task.missed]
+        selected = next((task for task in available if task.id == task_id), None)
+        if selected is None:
+            raise ValueError(f'Invalid task_id: {task_id}')
 
-            highest_priority = max(task.priority for task in available)
-            earliest_deadline = min(task.deadline for task in available)
-            planning_candidates = self._planning_candidates(available)
+        highest_priority = max(task.priority for task in available)
+        earliest_deadline = min(task.deadline for task in available)
+        planning_candidates = self._planning_candidates(available)
 
-            raw_reward = 0.0
-            step_has_mistake = False
-            reason_parts: List[str] = []
-            mistake_parts: List[str] = []
-            strategy_parts: List[str] = []
+        raw_reward = 0.0
+        step_has_mistake = False
+        reason_parts: List[str] = []
+        mistake_parts: List[str] = []
+        strategy_parts: List[str] = []
 
-            if selected.priority == highest_priority:
-                raw_reward += 0.4
-                reason_parts.append('The choice matches the highest available priority.')
-            else:
-                raw_reward -= 0.3
-                step_has_mistake = True
-                mistake_parts.append('A higher-priority task was available but not selected.')
+        if selected.priority == highest_priority:
+            raw_reward += 0.4
+            reason_parts.append('The choice matches the highest available priority.')
+        else:
+            raw_reward -= 0.3
+            step_has_mistake = True
+            mistake_parts.append('A higher-priority task was available but not selected.')
 
-            if selected.deadline == earliest_deadline:
-                raw_reward += 0.3
-                reason_parts.append('The choice addresses the earliest active deadline.')
-            else:
-                strategy_parts.append('The agent accepted some deadline risk to protect broader value.')
+        if selected.deadline == earliest_deadline:
+            raw_reward += 0.3
+            reason_parts.append('The choice addresses the earliest active deadline.')
+        else:
+            strategy_parts.append('The agent accepted some deadline risk to protect broader value.')
 
-            if selected.id in planning_candidates:
-                raw_reward += 0.2
-                reason_parts.append('The choice preserves the strongest long-term path across remaining steps.')
-            else:
-                step_has_mistake = True
-                mistake_parts.append('The action weakens the remaining schedule compared with safer alternatives.')
+        if selected.id in planning_candidates:
+            raw_reward += 0.2
+            reason_parts.append('The choice preserves the strongest long-term path across remaining steps.')
+        else:
+            step_has_mistake = True
+            mistake_parts.append('The action weakens the remaining schedule compared with safer alternatives.')
 
-            selected.completed = True
-            strategy_parts.append(f'Completed {selected.id} and advanced the schedule by one time unit.')
+        selected.completed = True
+        strategy_parts.append(f'Completed {selected.id} and advanced the schedule by one time unit.')
 
-            self.step_count += 1
-            self.time_elapsed += 1
+        self.step_count += 1
+        self.time_elapsed += 1
 
-            missed_now = self._advance_time_and_mark_missed()
-            if missed_now:
-                raw_reward -= 0.5 * len(missed_now)
-                step_has_mistake = True
-                mistake_parts.append('Missed deadline(s): ' + ', '.join(task.id for task in missed_now) + '.')
+        missed_now = self._advance_time_and_mark_missed()
+        if missed_now:
+            raw_reward -= 0.5 * len(missed_now)
+            step_has_mistake = True
+            mistake_parts.append('Missed deadline(s): ' + ', '.join(task.id for task in missed_now) + '.')
 
-            if step_has_mistake:
-                self.mistakes += 1
-                raw_reward -= 0.1 * self.mistakes
-                strategy_parts.append(f'Memory penalty applied because mistakes have accumulated to {self.mistakes}.')
-            else:
-                raw_reward += 0.1
-                strategy_parts.append('No mistakes recorded on this step.')
+        if step_has_mistake:
+            self.mistakes += 1
+            raw_reward -= 0.1 * self.mistakes
+            strategy_parts.append(f'Memory penalty applied because mistakes have accumulated to {self.mistakes}.')
+        else:
+            raw_reward += 0.1
+            strategy_parts.append('No mistakes recorded on this step.')
 
-            self.total_raw_reward += raw_reward
-            self.done = self.step_count >= EPISODE_LENGTH or all(task.completed or task.missed for task in self.tasks)
+        self.total_raw_reward += raw_reward
+        self.done = self.step_count >= EPISODE_LENGTH or all(task.completed or task.missed for task in self.tasks)
 
-            normalized_step_reward = self._clamp_reward(self._normalize_step_reward(raw_reward))
-            total_normalized = self._clamp_reward(self._normalize_total_reward(self.total_raw_reward))
+        normalized_step_reward = self._clamp_reward(self._normalize_step_reward(raw_reward))
+        total_normalized = self._clamp_reward(self._normalize_total_reward(self.total_raw_reward))
 
-            info = {
-                'reason': ' '.join(reason_parts) or 'The action completed a task.',
-                'mistake': ' '.join(mistake_parts) or 'No tactical mistakes were identified on this step.',
-                'strategy': ' '.join(strategy_parts),
+        info = {
+            'reason': ' '.join(reason_parts) or 'The action completed a task.',
+            'mistake': ' '.join(mistake_parts) or 'No tactical mistakes were identified on this step.',
+            'strategy': ' '.join(strategy_parts),
+            'raw_reward': round(raw_reward, 4),
+            'total_raw_reward': round(self.total_raw_reward, 4),
+            'total_normalized_reward': round(total_normalized, 4),
+            'mistakes': self.mistakes,
+            'missed_tasks_this_step': [task.id for task in missed_now],
+            'completed_task_id': selected.id,
+        }
+        self.history.append(
+            {
+                'step': self.step_count,
+                'selected_task_id': selected.id,
                 'raw_reward': round(raw_reward, 4),
-                'total_raw_reward': round(self.total_raw_reward, 4),
-                'total_normalized_reward': round(total_normalized, 4),
-                'mistakes': self.mistakes,
-                'missed_tasks_this_step': [task.id for task in missed_now],
-                'completed_task_id': selected.id,
-            }
-            self.history.append(
-                {
-                    'step': self.step_count,
-                    'selected_task_id': selected.id,
-                    'raw_reward': round(raw_reward, 4),
-                    'normalized_reward': round(normalized_step_reward, 4),
-                    'done': self.done,
-                    'info': info,
-                }
-            )
-
-            return {
-                'observation': self._build_observation().model_dump(),
-                'reward': round(normalized_step_reward, 4),
+                'normalized_reward': round(normalized_step_reward, 4),
                 'done': self.done,
                 'info': info,
             }
-        except Exception as exc:
-            return {
-                'observation': self._build_observation().model_dump(),
-                'reward': 0.0,
-                'done': self.done,
-                'info': {'error': str(exc)},
-            }
+        )
+
+        return self._build_observation(), round(normalized_step_reward, 4), self.done, info
 
     async def state(self) -> EnvState:
         return EnvState(

@@ -10,9 +10,12 @@ from pydantic import ValidationError
 
 from models import InferenceDecision, Observation, Task
 
-BASE_URL = os.getenv('OPENENV_URL', 'http://localhost:7860')
-SCENARIO = os.getenv('OPENENV_SCENARIO', 'hard')
-MODEL = os.getenv('OPENAI_MODEL', 'gpt-4.1-mini')
+ENV_BASE_URL = os.getenv('ENV_BASE_URL', 'http://localhost:7860')
+ENV_SCENARIO = os.getenv('ENV_SCENARIO', 'hard')
+API_BASE_URL = os.getenv('API_BASE_URL', 'https://api.openai.com/v1')
+MODEL_NAME = os.getenv('MODEL_NAME', 'gpt-4.1-mini')
+HF_TOKEN = os.getenv('HF_TOKEN')
+LOCAL_IMAGE_NAME = os.getenv('LOCAL_IMAGE_NAME')
 
 
 def choose_with_fallback(observation: Observation) -> InferenceDecision:
@@ -41,7 +44,7 @@ def ask_openai(client: OpenAI, observation: Observation) -> InferenceDecision:
         'instruction': 'Select exactly one task_id from the available tasks.',
     }
     response = client.responses.create(
-        model=MODEL,
+        model=MODEL_NAME,
         input=[
             {
                 'role': 'system',
@@ -73,19 +76,19 @@ def ask_openai(client: OpenAI, observation: Observation) -> InferenceDecision:
 
 
 def reset_env() -> Dict[str, Any]:
-    response = requests.post(f'{BASE_URL}/reset', params={'scenario': SCENARIO}, timeout=30)
+    response = requests.post(f'{ENV_BASE_URL}/reset', json={'scenario': ENV_SCENARIO}, timeout=30)
     response.raise_for_status()
     return response.json()
 
 
 def step_env(task_id: str) -> Dict[str, Any]:
-    response = requests.post(f'{BASE_URL}/step', json={'task_id': task_id}, timeout=30)
+    response = requests.post(f'{ENV_BASE_URL}/step', json={'task_id': task_id}, timeout=30)
     response.raise_for_status()
     return response.json()
 
 
 def main() -> None:
-    client = OpenAI()
+    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or os.getenv('OPENAI_API_KEY'))
     print('[START] resetting environment')
     reset_payload = reset_env()
     observation = Observation.model_validate(reset_payload['observation'])

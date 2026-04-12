@@ -400,7 +400,24 @@ async def reset(request: Request) -> dict:
     scenario = payload.get('scenario')
     if scenario not in SCENARIOS:
         scenario = None
-    return await env.reset(scenario)
+    try:
+        observation = await env.reset(scenario)
+        return {
+            'observation': observation.model_dump(),
+            'reward': 0.0,
+            'done': False,
+            'info': {
+                'scenario': env.scenario,
+                'seed': 7,
+            },
+        }
+    except Exception as exc:
+        return {
+            'observation': (await env.state()).observation.model_dump(),
+            'reward': 0.0,
+            'done': False,
+            'info': {'error': str(exc)},
+        }
 
 
 @app.post('/reset/')
@@ -416,7 +433,21 @@ async def step(request: Request) -> dict:
             payload = {}
     except Exception:
         payload = {}
-    return await env.step(payload)
+    try:
+        observation, reward, done, info = await env.step(payload)
+        return {
+            'observation': observation.model_dump(),
+            'reward': reward,
+            'done': done,
+            'info': info,
+        }
+    except Exception as exc:
+        return {
+            'observation': (await env.state()).observation.model_dump(),
+            'reward': 0.0,
+            'done': (await env.state()).done,
+            'info': {'error': str(exc)},
+        }
 
 
 @app.post('/step/')

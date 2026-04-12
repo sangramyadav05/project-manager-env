@@ -25,13 +25,15 @@ The environment ships with three deterministic difficulty levels:
 Raw shaped reward is computed per step and then normalized to `[0, 1]` for OpenEnv compatibility.
 
 Positive shaping:
-- `+0.5` for selecting the highest-priority available task
+- `+0.4` for selecting the highest-priority available task
 - `+0.3` for selecting the earliest-deadline task
-- `+0.2` for efficient scheduling when no deadlines have been missed so far
+- `+0.2` for preserving the strongest long-term path across remaining steps
+- `+0.1` for making a clean step without new mistakes
 
 Penalties:
 - `-0.5` for each task that misses its deadline on that step
-- `-0.2` for selecting a lower-priority task while a higher-priority task is still available
+- `-0.3` for poor prioritization
+- `-0.1 * mistakes` as an accumulating memory penalty for repeated bad decisions
 
 The environment also tracks cumulative raw reward and exposes a normalized total score in state and step metadata.
 
@@ -65,14 +67,16 @@ Open:
 ### 3. Exercise the environment
 Reset:
 ```bash
-curl -X POST "http://localhost:7860/reset?scenario=hard"
+curl -X POST "http://localhost:7860/reset" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 ```
 
 Step:
 ```bash
 curl -X POST "http://localhost:7860/step" \
   -H "Content-Type: application/json" \
-  -d '{"task_id": "hard_critical_long"}'
+  -d '{"task_id": "hard_security_review"}'
 ```
 
 State:
@@ -86,11 +90,14 @@ python grader.py
 ```
 
 ## OpenAI Inference Client
-`inference.py` is the only file that uses OpenAI. Set:
-- `OPENAI_API_KEY`
-- `OPENAI_MODEL` (optional, defaults to `gpt-4.1-mini`)
-- `OPENENV_URL` (optional, defaults to `http://localhost:7860`)
-- `OPENENV_SCENARIO` (optional, defaults to `hard`)
+`inference.py` is the only file that uses the OpenAI client. Set:
+- `API_BASE_URL` (optional, defaults to `https://api.openai.com/v1`)
+- `MODEL_NAME` (optional, defaults to `gpt-4.1-mini`)
+- `HF_TOKEN` (preferred for hosted inference)
+- `OPENAI_API_KEY` (supported fallback)
+- `ENV_BASE_URL` (optional, defaults to `http://localhost:7860`)
+- `ENV_SCENARIO` (optional, defaults to `hard`)
+- `LOCAL_IMAGE_NAME` (optional, reserved for docker-based workflows)
 
 Then run:
 ```bash
