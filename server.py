@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+import uvicorn
 
 from env import ProjectManagerEnv, SCENARIOS
 from grader import grade_all
@@ -690,3 +691,7 @@ async def state_with_slash() -> dict:
 @app.get('/grade')
 async def grade() -> dict:
     return (await grade_all()).model_dump()
+
+
+def main() -> None:
+    uvicorn.run("server:app", host="0.0.0.0", port=7860)
