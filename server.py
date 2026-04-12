@@ -183,6 +183,28 @@ INDEX_HTML = """<!DOCTYPE html>
       font-size: 0.96rem;
       font-weight: 600;
     }
+    .scenario-picker {
+      display: inline-flex;
+      gap: 8px;
+      padding: 6px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .scenario-option {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+      min-width: 92px;
+    }
+    .scenario-option.active {
+      background: linear-gradient(135deg, #263857, #172337);
+      border-color: rgba(122, 162, 255, 0.28);
+      color: var(--ink);
+    }
     select, button {
       border-radius: 999px;
       border: 1px solid var(--line);
@@ -251,6 +273,7 @@ INDEX_HTML = """<!DOCTYPE html>
       margin-bottom: 18px;
       line-height: 1.7;
       color: #f3eadf;
+      max-width: 72ch;
     }
     .tasks {
       display: grid;
@@ -321,8 +344,13 @@ INDEX_HTML = """<!DOCTYPE html>
     }
     .meta {
       color: var(--muted);
-      font-size: 0.97rem;
-      line-height: 1.72;
+      font-size: 0.93rem;
+      line-height: 1.82;
+      max-width: 60ch;
+    }
+    .meta-label {
+      color: #d8e4f3;
+      font-weight: 700;
     }
     .danger {
       color: var(--danger);
@@ -352,6 +380,8 @@ INDEX_HTML = """<!DOCTYPE html>
       .hero-grid { grid-template-columns: 1fr 1fr; }
       .controls { align-items: stretch; }
       .controls > * { width: 100%; }
+      .scenario-picker { width: 100%; justify-content: stretch; }
+      .scenario-option { flex: 1 1 0; min-width: 0; }
       .task-top,
       .entry-head { flex-direction: column; align-items: flex-start; }
       button { width: 100%; justify-content: center; }
@@ -389,12 +419,12 @@ INDEX_HTML = """<!DOCTYPE html>
     <div class="layout">
       <section class="panel">
         <div class="controls">
-          <label for="scenario">Scenario</label>
-          <select id="scenario">
-            <option value="easy">easy</option>
-            <option value="medium">medium</option>
-            <option value="hard" selected>hard</option>
-          </select>
+          <label>Scenario</label>
+          <div class="scenario-picker" id="scenarioPicker">
+            <button type="button" class="scenario-option" data-scenario="easy">easy</button>
+            <button type="button" class="scenario-option" data-scenario="medium">medium</button>
+            <button type="button" class="scenario-option active" data-scenario="hard">hard</button>
+          </div>
           <button id="resetBtn">Reset Episode</button>
           <button id="gradeBtn" class="secondary">Load Baseline Grade</button>
         </div>
@@ -424,14 +454,22 @@ INDEX_HTML = """<!DOCTYPE html>
     const tasksEl = document.getElementById('tasks');
     const logEl = document.getElementById('log');
     const hintBox = document.getElementById('hintBox');
-    const scenarioSelect = document.getElementById('scenario');
+    const scenarioPicker = document.getElementById('scenarioPicker');
     const scenarioValue = document.getElementById('scenarioValue');
     const stepValue = document.getElementById('stepValue');
     const mistakesValue = document.getElementById('mistakesValue');
     const scoreValue = document.getElementById('scoreValue');
     const gradeValue = document.getElementById('gradeValue');
     const gradeMeta = document.getElementById('gradeMeta');
+    let selectedScenario = 'hard';
     let currentState = null;
+
+    function setScenarioSelection(scenario) {
+      selectedScenario = scenario;
+      scenarioPicker.querySelectorAll('[data-scenario]').forEach((button) => {
+        button.classList.toggle('active', button.getAttribute('data-scenario') === scenario);
+      });
+    }
 
     function appendLog(title, payload, danger = false) {
       const entry = document.createElement('div');
@@ -449,6 +487,7 @@ INDEX_HTML = """<!DOCTYPE html>
     function renderState(state) {
       currentState = state;
       const observation = state.observation;
+      setScenarioSelection(observation.scenario);
       scenarioValue.textContent = observation.scenario;
       stepValue.textContent = `${observation.step} / 3`;
       mistakesValue.textContent = state.mistakes;
@@ -499,7 +538,7 @@ INDEX_HTML = """<!DOCTYPE html>
       const response = await fetch('/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scenario: scenarioSelect.value })
+        body: JSON.stringify({ scenario: selectedScenario })
       });
       const payload = await response.json();
       appendLog('Reset', payload.info.strategy || 'Environment reset.');
@@ -520,9 +559,9 @@ INDEX_HTML = """<!DOCTYPE html>
       appendLog(
         `Step ${payload.observation.step}`,
         `Task <strong>${taskId}</strong> | reward ${Number(payload.reward).toFixed(4)}<br>` +
-        `Reason: ${payload.info.reason}<br>` +
-        `Mistake: ${payload.info.mistake}<br>` +
-        `Strategy: ${payload.info.strategy}`,
+        `<span class="meta-label">Reason</span>: ${payload.info.reason}<br>` +
+        `<span class="meta-label">Mistake</span>: ${payload.info.mistake}<br>` +
+        `<span class="meta-label">Strategy</span>: ${payload.info.strategy}`,
         payload.info.mistake !== 'No tactical mistakes were identified on this step.'
       );
       await refreshState();
@@ -536,6 +575,17 @@ INDEX_HTML = """<!DOCTYPE html>
         `easy ${payload.scenario_scores.easy} | medium ${payload.scenario_scores.medium} | hard ${payload.scenario_scores.hard}`;
       appendLog('Baseline Grade', `Average score ${payload.average_score}`);
     }
+
+    scenarioPicker.querySelectorAll('[data-scenario]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const scenario = button.getAttribute('data-scenario');
+        if (scenario === selectedScenario && currentState?.observation?.scenario === scenario) {
+          return;
+        }
+        setScenarioSelection(scenario);
+        await resetEpisode();
+      });
+    });
 
     document.getElementById('resetBtn').addEventListener('click', resetEpisode);
     document.getElementById('gradeBtn').addEventListener('click', loadGrade);
