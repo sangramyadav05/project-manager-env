@@ -1,3 +1,12 @@
+---
+title: AI Project Manager Environment
+emoji: "📌"
+colorFrom: blue
+colorTo: green
+sdk: docker
+pinned: false
+---
+
 # AI Project Manager Environment
 
 ## Problem Statement
