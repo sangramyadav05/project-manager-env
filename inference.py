@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import requests
 from openai import OpenAI
@@ -75,6 +75,16 @@ def ask_openai(client: OpenAI, observation: Observation) -> InferenceDecision:
     return InferenceDecision.model_validate_json(response.output_text.strip())
 
 
+def build_client() -> Optional[OpenAI]:
+    api_key = HF_TOKEN or os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        return None
+    try:
+        return OpenAI(base_url=API_BASE_URL, api_key=api_key)
+    except Exception:
+        return None
+
+
 def reset_env() -> Dict[str, Any]:
     response = requests.post(f'{ENV_BASE_URL}/reset', json={'scenario': ENV_SCENARIO}, timeout=30)
     response.raise_for_status()
@@ -88,13 +98,19 @@ def step_env(task_id: str) -> Dict[str, Any]:
 
 
 def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or os.getenv('OPENAI_API_KEY'))
     print('[START] resetting environment')
-    reset_payload = reset_env()
-    observation = Observation.model_validate(reset_payload['observation'])
+    client = build_client()
+    try:
+        reset_payload = reset_env()
+        observation = Observation.model_validate(reset_payload['observation'])
+    except Exception as exc:
+        print('[END] ' + json.dumps({'error': f'reset_failed: {exc}'}))
+        return
 
     while True:
         try:
+            if client is None:
+                raise RuntimeError('openai_client_unavailable')
             decision = ask_openai(client, observation)
         except (ValidationError, json.JSONDecodeError, Exception):
             decision = choose_with_fallback(observation)
@@ -110,7 +126,12 @@ def main() -> None:
             )
         )
 
-        step_payload = step_env(decision.task_id)
+        try:
+            step_payload = step_env(decision.task_id)
+        except Exception as exc:
+            print('[END] ' + json.dumps({'error': f'step_failed: {exc}', 'last_task_id': decision.task_id}))
+            return
+
         print(
             '[STEP] '
             + json.dumps(
